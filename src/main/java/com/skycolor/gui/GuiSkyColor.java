@@ -14,7 +14,7 @@ public class GuiSkyColor extends GuiScreen {
     private static final int PW = 360, PH = 216;
 
     private static final int B_ENABLE = 0, B_MODE = 1, B_TAB_TOP = 2, B_TAB_BOTTOM = 3,
-            B_RESET = 4, B_SAVE = 5, B_CLOSE = 6;
+            B_RESET = 4, B_SAVE = 5, B_CLOSE = 6, B_FILL = 7;
 
     private final SkyConfig cfg = SkyColorMod.config;
     private boolean editingBottom = false;
@@ -24,7 +24,7 @@ public class GuiSkyColor extends GuiScreen {
     private final List<ColorSlider> sliders = new ArrayList<ColorSlider>();
     private ColorSlider dragging;
     private ColorSlider sH, sS, sV, sR, sG, sB, sCurve;
-    private GuiButton bEnable, bMode, bTop, bBottom;
+    private GuiButton bEnable, bMode, bTop, bBottom, bFill;
     private boolean hsvLoaded = false;
 
     @Override
@@ -42,6 +42,8 @@ public class GuiSkyColor extends GuiScreen {
         buttonList.add(bMode);
         buttonList.add(bTop);
         buttonList.add(bBottom);
+        bFill = new GuiButton(B_FILL, left + 188, top + 152, 160, 16, "");
+        buttonList.add(bFill);
         buttonList.add(new GuiButton(B_RESET, left + 12, top + 192, 108, 20, "Restaurar original"));
         buttonList.add(new GuiButton(B_SAVE, left + 126, top + 192, 108, 20, "Salvar"));
         buttonList.add(new GuiButton(B_CLOSE, left + 240, top + 192, 108, 20, "Fechar"));
@@ -141,6 +143,7 @@ public class GuiSkyColor extends GuiScreen {
         bBottom.enabled = cfg.gradient;
         bTop.enabled = editingBottom && cfg.gradient;   // aba ativa fica "apagada"
         bBottom.enabled = cfg.gradient && !editingBottom;
+        bFill.displayString = "Cobrir abaixo: " + (cfg.fillBelow ? "SIM" : "N\u00C3O");
         sCurve.value = cfg.curve;
     }
 
@@ -162,6 +165,8 @@ public class GuiSkyColor extends GuiScreen {
             case B_TAB_BOTTOM:
                 if (cfg.gradient) { editingBottom = true; loadFromColor(); }
                 break;
+            case B_FILL:
+                cfg.fillBelow = !cfg.fillBelow; cfg.dirty = true; break;
             case B_RESET:
                 cfg.resetToDefaults(); editingBottom = false; loadFromColor(); break;
             case B_SAVE:
@@ -227,7 +232,7 @@ public class GuiSkyColor extends GuiScreen {
         }
 
         // pre-visualizacao (mesma funcao de gradiente do renderizador)
-        int px = left + 188, py = top + 64, pw = 160, ph = 100;
+        int px = left + 188, py = top + 64, pw = 160, ph = 84;
         fontRendererObj.drawStringWithShadow("Pr\u00E9-visualiza\u00E7\u00E3o", px, top + 52, 0xDDDDDD);
         DrawUtil.border(px, py, pw, ph, 0xFF000000);
         for (int i = 0; i < ph; i += 2) {

@@ -30,7 +30,8 @@ public class SkyRenderer extends IRenderHandler {
     private static final ResourceLocation MOON = new ResourceLocation("textures/environment/moon_phases.png");
 
     // aneis do disco do ceu (raio horizontal em blocos; o plano fica em y = 16)
-    private static final float[] RADII = {0f, 6f, 11f, 18f, 26f, 36f, 52f, 75f, 114f, 183f, 305f, 420f};
+    private static final float[] RADII = {0f, 6f, 11f, 18f, 26f, 36f, 52f, 75f, 114f, 183f, 305f, 600f, 1400f};
+    private static final float WIDE_FAR = 2600f;      // plano de corte distante temporario (so durante o desenho do ceu)
     private static final int SEGMENTS = 32;
     private static final float PLANE_Y = 16f;
 
@@ -46,6 +47,9 @@ public class SkyRenderer extends IRenderHandler {
         float[] bottom = cfg.gradient ? shade(cfg.bottomColor, world, pt) : top;
         if (anaglyph) { top = anaglyph(top); bottom = anaglyph(bottom); }
 
+        boolean fill = cfg.fillBelow;
+        if (fill) pushProjection(WIDE_FAR);
+
         boolean cull = GL11.glIsEnabled(GL11.GL_CULL_FACE);
         GlStateManager.disableCull();
         GlStateManager.disableTexture2D();
@@ -56,7 +60,7 @@ public class SkyRenderer extends IRenderHandler {
         WorldRenderer wr = tess.getWorldRenderer();
 
         // ---- 1. plano do ceu (unica parte realmente modificada) ----
-        drawSkyDisc(wr, tess, top, bottom, cfg.curve);
+        drawSkyDisc(wr, tess, top, bottom, cfg.curve, fill);
 
         GlStateManager.disableAlpha();
         GlStateManager.enableBlend();
@@ -139,6 +143,8 @@ public class SkyRenderer extends IRenderHandler {
         GlStateManager.popMatrix();
 
         // ---- 4. plano escuro abaixo do horizonte (vanilla; usa a neblina vanilla) ----
+        // Com "cobrir abaixo do horizonte" ligado, o paredao colorido do passo 1 ja cobre essa area.
+        if (!fill) {
         GlStateManager.disableTexture2D();
         GlStateManager.color(0.0F, 0.0F, 0.0F);
         double d0 = mc.thePlayer.getPositionEyes(pt).yCoord - world.getHorizon();
@@ -163,10 +169,12 @@ public class SkyRenderer extends IRenderHandler {
         GlStateManager.translate(0.0F, -((float) (d0 - 16.0D)), 0.0F);
         drawUnderPlane(wr, tess);
         GlStateManager.popMatrix();
+        }
 
         GlStateManager.enableTexture2D();
         GlStateManager.depthMask(true);
         if (cull) GlStateManager.enableCull();
+        if (fill) popProjection();
     }
 
     /**
@@ -179,7 +187,28 @@ public class SkyRenderer extends IRenderHandler {
         float[] top = shade(cfg.topColor, world, pt);
         float[] bottom = cfg.gradient ? shade(cfg.bottomColor, world, pt) : top;
 
-        float far = mc.gameSettings.renderDistanceChunks * 16f * 2f;
+        boolean fill = cfg.fillBelow;
+        pushProjection(fill ? WIDE_FAR : mc.gameSettings.renderDistanceChunks * 16f * 2f);
+
+        boolean cull = GL11.glIsEnabled(GL11.GL_CULL_FACE);
+        GlStateManager.disableCull();
+        GlStateManager.disableTexture2D();
+        GlStateManager.depthMask(false);
+        GlStateManager.disableFog();
+
+        drawSkyDisc(Tessellator.getInstance().getWorldRenderer(), Tessellator.getInstance(), top, bottom, cfg.curve, fill);
+
+        GlStateManager.enableFog();
+        GlStateManager.depthMask(true);
+        GlStateManager.enableTexture2D();
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+        if (cull) GlStateManager.enableCull();
+
+        popProjection();
+    }
+
+    /** Troca temporariamente o plano de corte distante da projecao atual (restaurado por popProjection). */
+    private static void pushProjection(float far) {
         float near = 0.05f;
         FloatBuffer buf = GLAllocation.createDirectFloatBuffer(16);
         GlStateManager.matrixMode(5889);
@@ -190,21 +219,9 @@ public class SkyRenderer extends IRenderHandler {
         buf.rewind();
         GL11.glLoadMatrix(buf);
         GlStateManager.matrixMode(5888);
+    }
 
-        boolean cull = GL11.glIsEnabled(GL11.GL_CULL_FACE);
-        GlStateManager.disableCull();
-        GlStateManager.disableTexture2D();
-        GlStateManager.depthMask(false);
-        GlStateManager.disableFog();
-
-        drawSkyDisc(Tessellator.getInstance().getWorldRenderer(), Tessellator.getInstance(), top, bottom, cfg.curve);
-
-        GlStateManager.enableFog();
-        GlStateManager.depthMask(true);
-        GlStateManager.enableTexture2D();
-        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
-        if (cull) GlStateManager.enableCull();
-
+    private static void popProjection() {
         GlStateManager.matrixMode(5889);
         GlStateManager.popMatrix();
         GlStateManager.matrixMode(5888);
@@ -213,7 +230,7 @@ public class SkyRenderer extends IRenderHandler {
     // ------------------------------------------------------------------ geometria
 
     /** Disco horizontal em y=16 com cor por vertice: cor superior no zenite, inferior no horizonte. */
-    private void drawSkyDisc(WorldRenderer wr, Tessellator tess, float[] top, float[] bottom, float curve) {
+    private void drawSkyDisc(WorldRenderer wr, Tessellator tess, float[] top, float[] bottom, float curve, boolean fill) {
         int rings = RADII.length;
         float[][] col = new float[rings][3];
         for (int i = 0; i < rings; i++) {
@@ -236,6 +253,36 @@ public class SkyRenderer extends IRenderHandler {
             }
         }
         tess.draw();
+
+        if (fill) {
+            // Hemisferio inferior: espelho do ceu. Horizonte = cor inferior, nadir = cor superior,
+            // com a mesma curva do gradiente (depressao em graus no lugar da elevacao).
+            float R = RADII[rings - 1];
+            final float[] dep = {0f, 2f, 5f, 10f, 18f, 30f, 45f, 65f, 90f};
+            wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
+            for (int i = 0; i < dep.length - 1; i++) {
+                float[] c0 = lerpColor(top, bottom, ColorUtil.gradientT(dep[i], curve));
+                float[] c1 = lerpColor(top, bottom, ColorUtil.gradientT(dep[i + 1], curve));
+                float r0 = (i == 0) ? R : R * (float) Math.cos(Math.toRadians(dep[i]));
+                float y0 = (i == 0) ? PLANE_Y : -R * (float) Math.sin(Math.toRadians(dep[i]));
+                float r1 = R * (float) Math.cos(Math.toRadians(dep[i + 1]));
+                float y1 = -R * (float) Math.sin(Math.toRadians(dep[i + 1]));
+                for (int j = 0; j < SEGMENTS; j++) {
+                    double a0 = j * Math.PI * 2.0 / SEGMENTS, a1 = (j + 1) * Math.PI * 2.0 / SEGMENTS;
+                    float cs0 = (float) Math.cos(a0), sn0 = (float) Math.sin(a0);
+                    float cs1 = (float) Math.cos(a1), sn1 = (float) Math.sin(a1);
+                    wr.pos(r0 * cs0, y0, r0 * sn0).color(c0[0], c0[1], c0[2], 1f).endVertex();
+                    wr.pos(r0 * cs1, y0, r0 * sn1).color(c0[0], c0[1], c0[2], 1f).endVertex();
+                    wr.pos(r1 * cs1, y1, r1 * sn1).color(c1[0], c1[1], c1[2], 1f).endVertex();
+                    wr.pos(r1 * cs0, y1, r1 * sn0).color(c1[0], c1[1], c1[2], 1f).endVertex();
+                }
+            }
+            tess.draw();
+        }
+    }
+
+    private static float[] lerpColor(float[] a, float[] b, float t) {
+        return new float[]{a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t};
     }
 
     private void drawUnderPlane(WorldRenderer wr, Tessellator tess) {
