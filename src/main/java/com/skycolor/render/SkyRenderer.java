@@ -16,6 +16,7 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.IRenderHandler;
 import org.lwjgl.opengl.GL11;
 
+import java.nio.FloatBuffer;
 import java.util.Random;
 
 /**
@@ -37,6 +38,7 @@ public class SkyRenderer extends IRenderHandler {
 
     @Override
     public void render(float pt, WorldClient world, Minecraft mc) {
+        if (OptiFineCompat.isSkyOff()) return; // com Sky=OFF o disco e desenhado por renderDiscOnly()
         SkyConfig cfg = SkyColorMod.config;
         boolean anaglyph = mc.gameSettings.anaglyph;
 
@@ -165,6 +167,47 @@ public class SkyRenderer extends IRenderHandler {
         GlStateManager.enableTexture2D();
         GlStateManager.depthMask(true);
         if (cull) GlStateManager.enableCull();
+    }
+
+    /**
+     * Usado quando o OptiFine esta com "Sky: OFF": desenha SOMENTE o disco colorido (sem sol, lua,
+     * estrelas ou plano escuro), chamado a partir do evento de neblina que antecede o ceu.
+     * Ajusta temporariamente o plano de corte distante da projecao, como o vanilla faz so para o ceu.
+     */
+    public void renderDiscOnly(Minecraft mc, WorldClient world, float pt) {
+        SkyConfig cfg = SkyColorMod.config;
+        float[] top = shade(cfg.topColor, world, pt);
+        float[] bottom = cfg.gradient ? shade(cfg.bottomColor, world, pt) : top;
+
+        float far = mc.gameSettings.renderDistanceChunks * 16f * 2f;
+        float near = 0.05f;
+        FloatBuffer buf = GLAllocation.createDirectFloatBuffer(16);
+        GlStateManager.matrixMode(5889);
+        GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, buf);
+        buf.put(10, -(far + near) / (far - near));
+        buf.put(14, -2f * far * near / (far - near));
+        GlStateManager.pushMatrix();
+        buf.rewind();
+        GL11.glLoadMatrix(buf);
+        GlStateManager.matrixMode(5888);
+
+        boolean cull = GL11.glIsEnabled(GL11.GL_CULL_FACE);
+        GlStateManager.disableCull();
+        GlStateManager.disableTexture2D();
+        GlStateManager.depthMask(false);
+        GlStateManager.disableFog();
+
+        drawSkyDisc(Tessellator.getInstance().getWorldRenderer(), Tessellator.getInstance(), top, bottom, cfg.curve);
+
+        GlStateManager.enableFog();
+        GlStateManager.depthMask(true);
+        GlStateManager.enableTexture2D();
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+        if (cull) GlStateManager.enableCull();
+
+        GlStateManager.matrixMode(5889);
+        GlStateManager.popMatrix();
+        GlStateManager.matrixMode(5888);
     }
 
     // ------------------------------------------------------------------ geometria

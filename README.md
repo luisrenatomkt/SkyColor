@@ -17,3 +17,6 @@ Configuracao salva em `.minecraft/config/skycolor.cfg` ao clicar em "Salvar".
 
 ## CI
 O workflow `.github/workflows/build.yml` compila a cada push e publica o JAR como artifact (aba Actions).
+
+## OptiFine HD_U_M5
+Com "Sky: OFF" o disco colorido e desenhado via EntityViewRenderEvent.RenderFogEvent (ver ClientEvents.onRenderFog).
