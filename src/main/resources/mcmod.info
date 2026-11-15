@@ -1,0 +1,11 @@
+[
+  {
+    "modid": "skycolor",
+    "name": "Sky Color",
+    "description": "Altera somente a cor do ceu original do Minecraft (cor unica ou gradiente).",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "authorList": [],
+    "useDependencyInformation": false
+  }
+]
